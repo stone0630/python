@@ -1,0 +1,136 @@
+阿里云 Galaxy系统打NTP时间回退补丁浙商银行测试云
+
+法律声明
+阿里云提醒您在阅读或使用本文档之前仔细阅读、充分理解本法律声明各条款的内容。如果您阅读或使用本文档，您的阅读或使用行为将被视为对本声明全部内容的认可。
+1. 您应当通过阿里云网站或阿里云提供的其他授权通道下载、获取本文档，且仅能用于自身的合法合规的业务活动。本文档的内容视为阿里云的保密信息，您应当严格遵守保密义务；未经阿里云事先书面同意，您不得向任何第三方披露本手册内容或提供给任何第三方使用。
+2. 未经阿里云事先书面许可，任何单位、公司或个人不得擅自摘抄、翻译、复制本文档内容的部分或全部，不得以任何方式或途径进行传播和宣传。
+3. 由于产品版本升级、调整或其他原因，本文档内容有可能变更。阿里云保留在没有任何通知或者提示下对本文档的内容进行修改的权利。
+4. 本文档仅针对特定局点或者项目，特定环境；不作为通用的文档或者手册进行指导，不具备流通复制的可行性。若用户自行复用，产生的任何后果（包括经济损失），阿里云不负有任何责任。
+5. 如若发现本文档存在任何错误，请与阿里云取得直接联系。
+前言
+说明
+		EL5系统打NTP时间回退补丁
+应用范围
+本次变更范围为galaxy产品集群，机器IP列表如下
+galaxy  10.100.4.50
+galaxy  10.100.4.51
+galaxy  10.100.4.52
+galaxy  10.100.4.53
+galaxy  10.100.4.54
+galaxy  10.100.4.55
+galaxy  10.100.4.56
+galaxy  10.100.4.57
+galaxy  10.100.4.58
+galaxy  10.100.4.59
+目录
+法律声明	I
+前言	II
+目录	III
+1. 变更准备	1
+1.1. 变更环境信息	1
+1.2. 变更原因	1
+1.3. 变更影响	1
+1.4. 变更日期与人员	1
+1.5. 操作环境准备	1
+2. 变更实施	2
+2.1. 操作步骤	2
+3. 回退方案	5
+
+1. 变更准备
+1.1. 变更环境信息
+　　Galaxy-EL5系统需要打NTP时间回退补丁
+1.2. 变更原因
+　　解决Galaxy-EL5机器在调整NTP时间时，时间回退问题
+1.3. 变更影响
+　　无影响
+1.4. 变更日期与人员
+变更时间：2018年01月17日
+姓名电话公司参与人员崔振18668169818数梦参与人员星辰18106520694数梦参与人员陈懋森13758278464阿里
+1.5. 操作环境准备
+现场人员提前熟悉方案，校对步骤；
+2. 变更实施
+2.1. 操作步骤
+操作步骤
+1、 登录dmsag（10.100.4.123；以下统称dmsag）现场找出所有物理机IP地址
+注：到R表目录下载执行上面命令，确认R表内ip是第7列如果不是将$7改成现场列如$3
+cat rtable.csv | grep -v sn_ |grep  aygalaxy |awk -F , '{print $7}' | grep -vi ip >>/tmp/allip.list
+
+2、 for i in `cat /tmp/allip.list`; do a=`ssh $i "cat /etc/redhat-release|grep '5.7'"|wc -l`; if [[ $a == 1 ]];then echo $i >>/tmp/el5ip.list; else echo $i >>/dev/null ; fi; done
+注：将所有现场的el5系统服务找出到/tmp/el5ip.list内
+
+
+
+3、 cat /tmp/el5ip.list 
+找几台机器验证下 是否都是 5u7的机器  到机器内执行 uname -a    是否有el5.x86_64在输出信息内 如果有就证明是5u7的
+
+
+
+4、 备份/etc/sysconfig/ntpd文件
+/home/tops/bin/pssh -ih /tmp/el5ip.list "cp /etc/sysconfig/ntpd /etc/sysconfig/ntpd-back"
+
+5、 备份/etc/init.d/ntpd
+/home/tops/bin/pssh -ih /tmp/el5ip.list "cp /etc/init.d/ntpd /etc/init.d/ntpd -back"
+6、 随便找一台EL5机器修改/etc/sysconfig/ntpd配置文件如下 注意：确保 -x 选项存在
+# Drop root to id 'ntp:ntp' by default.
+OPTIONS="-x -u ntp:ntp -p /var/run/ntpd.pid"
+
+# Set to 'yes' to sync hw clock after successful ntpdate
+SYNC_HWCLOCK=no
+
+# Additional options for ntpdate
+NTPDATE_OPTIONS=""
+
+7、 将5修改的配置文件传到dmsag 的/tmp目录
+Dmsag 上操作   scp root@$ip:/etc/sysconfig/ntpd /tmp
+
+8、 下发ntpd到所有EL5系统内
+Dmsag 执行 /home/tops/bin/pscp -h /tmp/el5ip.list /tmp/ntpd /etc/sysconfig/
+
+9、 将el5_ntpd.patch 文件上传至 dmsag /tmp 目录下，检测el5_ntpd.patch md5
+　　#md5sum el5_ntpd.patch 
+	   02677390380fc1fe20c709ec6ea8b1fe  el5_ntpd.patch
+
+10、下发el5_ntpd.patch 到所机器的/目录
+dmsag  执行 /home/tops/bin/pscp -h /tmp/el5ip.list el5_ntpd.patch /
+
+11、所有EL5开始打补丁
+dmsag 执行  /home/tops/bin/pssh -i -h /tmp/el5ip.list "cd / && patch -p1 < el5_ntpd.patch"
+（注：dmsag、ops1 和ops2 如果是EL5系统也单独打补丁，不是EL5不需要打）
+12、验证是否已打补丁
+Dmsag执行for i in `cat /tmp/el5ip.list`;do ssh $i "sed -n '/start()/,/}/'p /etc/init.d/ntpd";sleep 1 ;done
+注：输出内容中间部分都有#即为补丁打成功
+
+
+
+
+3. 回退方案
+Dmsag上
+/home/tops/bin/pssh -ih /tmp/el5ip.list "cp /etc/sysconfig/ntpd-back /etc/sysconfig/ntpd "
+　　
+/home/tops/bin/pssh -ih /tmp/el5ip.list "cp /etc/init.d/ntpd-back /etc/init.d/ntpd"
+　　
+附录 	其他信息
+
+　　无
+[键入文字]0[键入文字]0[键入文字]
+
+
+
+
+文档版本：20150122（发布日期）II 
+
+
+
+0阿里云变更手册 0
+
+I 
+
+0阿里云变更手册 0
+
+
+III 
+
+2
+
+6
+
